@@ -1,0 +1,65 @@
+name: Build exteraGram baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check required API secrets
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_HASH: ${{ secrets.APP_HASH }}
+        run: |
+          test -n "$APP_ID" || (echo "Missing repository secret APP_ID" && exit 1)
+          test -n "$APP_HASH" || (echo "Missing repository secret APP_HASH" && exit 1)
+
+      - name: Checkout archived exteraGram source
+        uses: actions/checkout@v4
+        with:
+          repository: exteraSquad/exteraGram
+          ref: main
+          path: source
+          fetch-depth: 1
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Configure API keys without committing them
+        working-directory: source
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_HASH: ${{ secrets.APP_HASH }}
+          MAPS_V2_API: ${{ secrets.MAPS_V2_API }}
+        run: |
+          {
+            printf 'APP_ID = %s\n' "$APP_ID"
+            printf 'APP_HASH = %s\n' "$APP_HASH"
+            printf 'MAPS_V2_API = %s\n' "$MAPS_V2_API"
+          } > API_KEYS
+
+      - name: Build APK
+        working-directory: source
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleAfatRelease --no-daemon
+
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exteragram-baseline-apk
+          path: source/**/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 7
